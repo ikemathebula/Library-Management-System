@@ -23,7 +23,7 @@ public class LibraryManagementSystem {
         while (true) {
             System.out.println("\nLibrary Management System");
             System.out.println("1. Add Book");
-            System.out.println("2. View Books");
+            System.out.println("3. View Books");
             System.out.println("3. Issue Book");
             System.out.println("4. Return Book");
             System.out.println("5. Exit");
