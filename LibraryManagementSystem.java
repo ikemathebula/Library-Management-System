@@ -1,45 +1,36 @@
-import java.io.*;
+import java.sql.*;
 import java.util.*;
 
-class Book implements Serializable {
-    private static final long serialVersionUID = 1L;
-    String title, author;
+class Book {
     int id;
+    String title, author;
     boolean isIssued;
-    int issuedTo; // Stores user ID who borrowed the book
+    int issuedTo;
 
-    public Book(int id, String title, String author) {
+    public Book(int id, String title, String author, boolean isIssued, int issuedTo) {
         this.id = id;
         this.title = title;
         this.author = author;
-        this.isIssued = false;
-        this.issuedTo = -1; // Default to no user
+        this.isIssued = isIssued;
+        this.issuedTo = issuedTo;
     }
 }
 
-class User implements Serializable {
-    private static final long serialVersionUID = 1L;
-    String name;
+class User {
     int userId;
-    List<Integer> borrowedBooks;
+    String name;
 
     public User(int userId, String name) {
         this.userId = userId;
         this.name = name;
-        this.borrowedBooks = new ArrayList<>();
     }
 }
 
 public class LibraryManagementSystem {
-    private static List<Book> books = new ArrayList<>();
-    private static List<User> users = new ArrayList<>();
     private static Scanner scanner = new Scanner(System.in);
     private static User loggedInUser = null;
 
     public static void main(String[] args) {
-        loadBooks();
-        loadUsers();
-
         while (true) {
             System.out.println("\nLibrary Management System");
             System.out.println("1. Register User");
@@ -62,7 +53,7 @@ public class LibraryManagementSystem {
                 case 5: issueBook(); break;
                 case 6: returnBook(); break;
                 case 7: logoutUser(); break;
-                case 8: saveBooks(); saveUsers(); System.exit(0);
+                case 8: System.exit(0);
                 default: System.out.println("Invalid option. Try again.");
             }
         }
@@ -71,32 +62,42 @@ public class LibraryManagementSystem {
     private static void registerUser() {
         System.out.print("Enter your name: ");
         String name = scanner.nextLine();
-        User newUser = new User(users.size() + 1, name);
-        users.add(newUser);
-        System.out.println("User registered successfully! Your User ID is: " + newUser.userId);
+        try (Connection conn = DatabaseManager.getConnection();
+             PreparedStatement stmt = conn.prepareStatement("INSERT INTO users (name) VALUES (?)", Statement.RETURN_GENERATED_KEYS)) {
+            stmt.setString(1, name);
+            stmt.executeUpdate();
+            ResultSet rs = stmt.getGeneratedKeys();
+            if (rs.next()) {
+                int userId = rs.getInt(1);
+                System.out.println("User registered successfully! Your User ID is: " + userId);
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
     }
 
     private static void loginUser() {
         System.out.print("Enter your User ID: ");
         int userId = scanner.nextInt();
         scanner.nextLine();
-        for (User user : users) {
-            if (user.userId == userId) {
-                loggedInUser = user;
-                System.out.println("Login successful! Welcome, " + user.name);
-                return;
+        try (Connection conn = DatabaseManager.getConnection();
+             PreparedStatement stmt = conn.prepareStatement("SELECT * FROM users WHERE id = ?")) {
+            stmt.setInt(1, userId);
+            ResultSet rs = stmt.executeQuery();
+            if (rs.next()) {
+                loggedInUser = new User(rs.getInt("id"), rs.getString("name"));
+                System.out.println("Login successful! Welcome, " + loggedInUser.name);
+            } else {
+                System.out.println("User not found. Please register first.");
             }
+        } catch (SQLException e) {
+            e.printStackTrace();
         }
-        System.out.println("User not found. Please register first.");
     }
 
     private static void logoutUser() {
-        if (loggedInUser != null) {
-            System.out.println("Logged out successfully.");
-            loggedInUser = null;
-        } else {
-            System.out.println("No user is logged in.");
-        }
+        loggedInUser = null;
+        System.out.println("Logged out successfully.");
     }
 
     private static void addBook() {
@@ -108,18 +109,27 @@ public class LibraryManagementSystem {
         String title = scanner.nextLine();
         System.out.print("Enter author: ");
         String author = scanner.nextLine();
-        books.add(new Book(books.size() + 1, title, author));
-        System.out.println("Book added successfully!");
+        try (Connection conn = DatabaseManager.getConnection();
+             PreparedStatement stmt = conn.prepareStatement("INSERT INTO books (title, author, isIssued, issuedTo) VALUES (?, ?, false, NULL)")) {
+            stmt.setString(1, title);
+            stmt.setString(2, author);
+            stmt.executeUpdate();
+            System.out.println("Book added successfully!");
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
     }
 
     private static void viewBooks() {
-        if (books.isEmpty()) {
-            System.out.println("No books available.");
-            return;
-        }
-        for (Book book : books) {
-            String status = book.isIssued ? "Issued to User ID " + book.issuedTo : "Available";
-            System.out.println(book.id + ". " + book.title + " by " + book.author + " (" + status + ")");
+        try (Connection conn = DatabaseManager.getConnection();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT * FROM books")) {
+            while (rs.next()) {
+                String status = rs.getBoolean("isIssued") ? "Issued to User ID " + rs.getInt("issuedTo") : "Available";
+                System.out.println(rs.getInt("id") + ". " + rs.getString("title") + " by " + rs.getString("author") + " (" + status + ")");
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
         }
     }
 
@@ -131,16 +141,16 @@ public class LibraryManagementSystem {
         System.out.print("Enter book ID to issue: ");
         int id = scanner.nextInt();
         scanner.nextLine();
-        for (Book book : books) {
-            if (book.id == id && !book.isIssued) {
-                book.isIssued = true;
-                book.issuedTo = loggedInUser.userId;
-                loggedInUser.borrowedBooks.add(book.id);
-                System.out.println("Book issued successfully to " + loggedInUser.name + "!");
-                return;
-            }
+        try (Connection conn = DatabaseManager.getConnection();
+             PreparedStatement stmt = conn.prepareStatement("UPDATE books SET isIssued = true, issuedTo = ? WHERE id = ? AND isIssued = false")) {
+            stmt.setInt(1, loggedInUser.userId);
+            stmt.setInt(2, id);
+            int updated = stmt.executeUpdate();
+            if (updated > 0) System.out.println("Book issued successfully!");
+            else System.out.println("Invalid ID or book already issued.");
+        } catch (SQLException e) {
+            e.printStackTrace();
         }
-        System.out.println("Invalid ID or book already issued.");
     }
 
     private static void returnBook() {
@@ -151,47 +161,15 @@ public class LibraryManagementSystem {
         System.out.print("Enter book ID to return: ");
         int id = scanner.nextInt();
         scanner.nextLine();
-        for (Book book : books) {
-            if (book.id == id && book.isIssued && book.issuedTo == loggedInUser.userId) {
-                book.isIssued = false;
-                book.issuedTo = -1;
-                loggedInUser.borrowedBooks.remove(Integer.valueOf(id));
-                System.out.println("Book returned successfully!");
-                return;
-            }
-        }
-        System.out.println("Invalid ID or book was not issued by you.");
-    }
-
-    private static void loadBooks() {
-        try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream("books.dat"))) {
-            books = (List<Book>) ois.readObject();
-        } catch (Exception e) {
-            books = new ArrayList<>();
-        }
-    }
-
-    private static void saveBooks() {
-        try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream("books.dat"))) {
-            oos.writeObject(books);
-        } catch (IOException e) {
-            System.out.println("Error saving books.");
-        }
-    }
-
-    private static void loadUsers() {
-        try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream("users.dat"))) {
-            users = (List<User>) ois.readObject();
-        } catch (Exception e) {
-            users = new ArrayList<>();
-        }
-    }
-
-    private static void saveUsers() {
-        try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream("users.dat"))) {
-            oos.writeObject(users);
-        } catch (IOException e) {
-            System.out.println("Error saving users.");
+        try (Connection conn = DatabaseManager.getConnection();
+             PreparedStatement stmt = conn.prepareStatement("UPDATE books SET isIssued = false, issuedTo = NULL WHERE id = ? AND issuedTo = ?")) {
+            stmt.setInt(1, id);
+            stmt.setInt(2, loggedInUser.userId);
+            int updated = stmt.executeUpdate();
+            if (updated > 0) System.out.println("Book returned successfully!");
+            else System.out.println("Invalid ID or book was not issued by you.");
+        } catch (SQLException e) {
+            e.printStackTrace();
         }
     }
 }
