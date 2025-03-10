@@ -1,20 +1,6 @@
 import java.sql.*;
 import java.util.*;
 
-class Book {
-    int id;
-    String title, author;
-    boolean isIssued;
-    int issuedTo;
-
-    public Book(int id, String title, String author, boolean isIssued, int issuedTo) {
-        this.id = id;
-        this.title = title;
-        this.author = author;
-        this.isIssued = isIssued;
-        this.issuedTo = issuedTo;
-    }
-}
 
 class User {
     int userId;
