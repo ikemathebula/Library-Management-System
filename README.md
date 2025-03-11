@@ -76,8 +76,7 @@ cd Library-Management-System
 
 ---
 
-## 📸 Screenshots
-(Add images of your application here.)
+## 📸 ![image](https://github.com/user-attachments/assets/03a49f2e-1cba-463a-b211-5501101764dc)
 
 ---
 
