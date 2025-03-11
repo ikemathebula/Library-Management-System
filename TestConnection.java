@@ -1,18 +1,16 @@
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public class TestConnection {
-    public static void main(String[] args) {
-        try {
-            // Attempt to get a connection to MySQL
-            Connection conn = DatabaseManager.getConnection();
-            System.out.println("Connected to MySQL successfully!");
+    private static final Logger LOGGER = Logger.getLogger(TestConnection.class.getName());
 
-            // Close the connection
-            conn.close();
+    public static void main(String[] args) {
+        try (Connection conn = DatabaseManager.getConnection()) {
+            LOGGER.info("Connected to MySQL successfully!");
         } catch (SQLException e) {
-            System.out.println("Error: Unable to connect to MySQL.");
-            e.printStackTrace();
+            LOGGER.log(Level.SEVERE, "Error: Unable to connect to MySQL", e);
         }
     }
 }
